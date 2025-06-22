@@ -1,44 +1,25 @@
-/*
-
-&i2c2 { /* <-- IMPORTANT: Use the correct I2C bus for your board! */
+```
+&i2c2 { /* <-- This is bus 2, as you verified */
     status = "okay";
 
     /* Solomon SSD2533 Touchscreen Controller */
-    touchscreen: touchscreen@2c {
+    touchscreen: touchscreen@48 {
         compatible = "solomon,ssd2533";
-        reg = <0x2c>; /* The 7-bit I2C slave address of the chip */
-        pinctrl-names = "default";
-        pinctrl-0 = <&pinctrl_touch>;
-        
-        /*
-         * VERY IMPORTANT: You MUST get these GPIO numbers from your
-         * custom carrier board's schematics. These are examples.
-         * The format is <&gpio_controller port_number flags>.
-         */
-        reset-gpios = <&gpio1 21 GPIO_ACTIVE_LOW>; /* Example: GPIO1_IO21 */
+        reg = <0x48>; /* The 7-bit I2C slave address you verified */
 
         /*
-         * The IRQ pin should be defined in the pinctrl section and
-         * referenced here. The driver will get it from client->irq.
-         * Ensure your pinctrl correctly configures the GPIO as an interrupt.
+         * VERY IMPORTANT: You must find the correct UNUSED local pin numbers
+         * on gpio3 (0-31) for both the reset and interrupt lines.
+         * The pins 5, 14, 15, and 24 are already used.
+         *
+         * Change these numbers one by one to test.
          */
-         
+        reset-gpios     = <&gpio3 0 GPIO_ACTIVE_LOW>; /* Example: GPIO3_IO00 */
+        interrupt-gpios = <&gpio3 2 GPIO_ACTIVE_LOW>; /* Example: GPIO3_IO02 */
+
         /* Touchscreen Resolution Properties */
         touchscreen-size-x = <800>;  /* Replace with your panel's native width */
         touchscreen-size-y = <480>;  /* Replace with your panel's native height */
     };
 };
-
-
-pinctrl_touch: touchgrp {
-    fsl,pins = <
-        /*
-         * This configures a GPIO3 pin as an interrupt.
-         * You MUST find the correct pad definition for your interrupt pin.
-         * This example uses EIM_D20 for GPIO3_IO20.
-         */
-        MX6QDL_PAD_EIM_D20__GPIO3_IO20    0x80000000 
-    >;
-};
-
-*/
+```

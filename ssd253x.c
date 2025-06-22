@@ -1,15 +1,12 @@
 /*
  * Solomon Systech SSD253X I2C Touchscreen Driver
  *
- * Adapted for standard Linux Kernel (i.MX6 / Android 8 AOSP) from Amlogic-specific sources.
- * Original source from Pivos Group Buildroot.
+ * Version 2: Adapted to use direct GPIO lookup instead of pinctrl.
+ * This simplifies the device tree configuration.
  *
  * Key Adaptations:
- * - Replaced Amlogic-specific headers with standard kernel headers.
- * - Converted GPIO handling to use the modern, descriptor-based GPIO interface.
- * - Added standard Device Tree (DT) binding support with an of_match_table.
- * - Replaced platform data with DT property reading for configuration.
- * - Cleaned up and commented code for clarity.
+ * - Probe function now gets the interrupt line via "interrupt-gpios" from DT.
+ * - This removes the need for a separate `pinctrl` node in the DTS.
  */
 
 #include <linux/module.h>
@@ -145,10 +142,11 @@ static int ssd253x_ts_probe(struct i2c_client *client, const struct i2c_device_i
 {
     struct ssd253x_ts_data *ts;
     struct input_dev *input_dev;
+    struct gpio_desc *irq_gpio;
     int error;
     u32 screen_max_x, screen_max_y;
 
-    dev_info(&client->dev, "probing for SSD253x touchscreen\n");
+    dev_info(&client->dev, "probing for SSD253x touchscreen (v2 driver)\n");
 
     if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
         dev_err(&client->dev, "I2C functionality check failed\n");
@@ -163,14 +161,12 @@ static int ssd253x_ts_probe(struct i2c_client *client, const struct i2c_device_i
     i2c_set_clientdata(client, ts);
 
     /* --- GPIO Adaptation --- */
-    /* Get the optional reset GPIO from DT */
     ts->reset_gpio = devm_gpiod_get_optional(&client->dev, "reset", GPIOD_OUT_LOW);
     if (IS_ERR(ts->reset_gpio)) {
         dev_err(&client->dev, "failed to get reset gpio\n");
         return PTR_ERR(ts->reset_gpio);
     }
 
-    /* Reset the controller */
     ssd253x_ts_reset(ts);
 
     /* --- Input Device Setup --- */
@@ -189,7 +185,6 @@ static int ssd253x_ts_probe(struct i2c_client *client, const struct i2c_device_i
     __set_bit(EV_KEY, input_dev->evbit);
     __set_bit(BTN_TOUCH, input_dev->keybit);
 
-    /* Read screen resolution from Device Tree */
     error = device_property_read_u32(&client->dev, "touchscreen-size-x", &screen_max_x);
     if (error) {
         dev_warn(&client->dev, "touchscreen-size-x not found, using default 800\n");
@@ -211,19 +206,26 @@ static int ssd253x_ts_probe(struct i2c_client *client, const struct i2c_device_i
         return error;
     }
 
-    /* --- IRQ Setup --- */
-    if (client->irq) {
-        error = devm_request_threaded_irq(&client->dev, client->irq, NULL,
-                                          ssd253x_ts_interrupt,
-                                          IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-                                          "ssd253x-ts", ts);
-        if (error) {
-            dev_err(&client->dev, "failed to request irq %d\n", client->irq);
-            return error;
-        }
-    } else {
-        dev_err(&client->dev, "IRQ not configured in device tree\n");
-        return -EINVAL;
+    /* --- NEW IRQ Setup --- */
+    irq_gpio = devm_gpiod_get(&client->dev, "interrupt", GPIOD_IN);
+    if (IS_ERR(irq_gpio)) {
+        dev_err(&client->dev, "failed to get interrupt gpio\n");
+        return PTR_ERR(irq_gpio);
+    }
+    
+    ts->irq = gpiod_to_irq(irq_gpio);
+    if (ts->irq < 0) {
+        dev_err(&client->dev, "failed to get irq from gpio\n");
+        return ts->irq;
+    }
+
+    error = devm_request_threaded_irq(&client->dev, ts->irq, NULL,
+                                      ssd253x_ts_interrupt,
+                                      IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+                                      "ssd253x-ts", ts);
+    if (error) {
+        dev_err(&client->dev, "failed to request irq %d\n", ts->irq);
+        return error;
     }
     
     /* Register the input device */
@@ -274,5 +276,5 @@ static struct i2c_driver ssd253x_ts_driver = {
 module_i2c_driver(ssd253x_ts_driver);
 
 MODULE_AUTHOR("Adapted for standard kernel");
-MODULE_DESCRIPTION("Solomon SSD253x I2C Touchscreen Driver");
+MODULE_DESCRIPTION("Solomon SSD253x I2C Touchscreen Driver (v2)");
 MODULE_LICENSE("GPL v2");
