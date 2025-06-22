@@ -20,11 +20,13 @@
  * @client:      The I2C client device.
  * @input_dev:   The input device structure.
  * @reset_gpio:  GPIO descriptor for the reset pin.
+ * @irq:         The interrupt request number for the touchscreen.
  */
 struct ssd253x_ts_data {
     struct i2c_client      *client;
     struct input_dev       *input_dev;
     struct gpio_desc       *reset_gpio;
+    int                    irq;
 };
 
 #endif /* _SSD253X_H */

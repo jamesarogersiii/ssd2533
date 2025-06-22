@@ -1,8 +1,8 @@
 /*
  * Solomon Systech SSD253X I2C Touchscreen Driver
  *
- * Version 2: Adapted to use direct GPIO lookup instead of pinctrl.
- * This simplifies the device tree configuration.
+ * Version 3: Fixed compile error related to missing 'irq' member.
+ * No logical changes from v2.
  *
  * Key Adaptations:
  * - Probe function now gets the interrupt line via "interrupt-gpios" from DT.
@@ -146,7 +146,7 @@ static int ssd253x_ts_probe(struct i2c_client *client, const struct i2c_device_i
     int error;
     u32 screen_max_x, screen_max_y;
 
-    dev_info(&client->dev, "probing for SSD253x touchscreen (v2 driver)\n");
+    dev_info(&client->dev, "probing for SSD253x touchscreen (v3 driver)\n");
 
     if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
         dev_err(&client->dev, "I2C functionality check failed\n");
@@ -276,5 +276,5 @@ static struct i2c_driver ssd253x_ts_driver = {
 module_i2c_driver(ssd253x_ts_driver);
 
 MODULE_AUTHOR("Adapted for standard kernel");
-MODULE_DESCRIPTION("Solomon SSD253x I2C Touchscreen Driver (v2)");
+MODULE_DESCRIPTION("Solomon SSD253x I2C Touchscreen Driver (v3)");
 MODULE_LICENSE("GPL v2");
