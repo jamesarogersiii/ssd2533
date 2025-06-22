@@ -1,3 +1,5 @@
+/*
+
 &i2c2 { /* <-- IMPORTANT: Use the correct I2C bus for your board! */
     status = "okay";
 
@@ -24,3 +26,5 @@
         touchscreen-size-y = <480>;  /* Replace with your panel's native height */
     };
 };
+
+*/
