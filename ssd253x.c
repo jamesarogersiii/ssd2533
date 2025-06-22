@@ -1,12 +1,9 @@
 /*
  * Solomon Systech SSD253X I2C Touchscreen Driver
  *
- * Version 3: Fixed compile error related to missing 'irq' member.
- * No logical changes from v2.
- *
- * Key Adaptations:
- * - Probe function now gets the interrupt line via "interrupt-gpios" from DT.
- * - This removes the need for a separate `pinctrl` node in the DTS.
+ * Version 5: Added an initialization command after reset.
+ * This explicitly tells the chip to start scanning for touches, which is likely
+ * required before it will generate any interrupts.
  */
 
 #include <linux/module.h>
@@ -29,7 +26,7 @@
 // Forward declaration
 static irqreturn_t ssd253x_ts_interrupt(int irq, void *dev_id);
 
-/* ----- Core Driver Logic (largely unchanged) ----- */
+/* ----- Core Driver Logic ----- */
 
 static int ssd253x_ts_i2c_read(struct i2c_client *client, u8 addr, u8 *data, int len)
 {
@@ -79,6 +76,22 @@ static int ssd253x_ts_i2c_write(struct i2c_client *client, u8 addr, u8 *data, in
 
     kfree(buf);
     return ret;
+}
+
+static int ssd253x_ts_init_chip(struct i2c_client *client)
+{
+    u8 enable_cmd = 0x01;
+    int ret;
+
+    // This command tells the chip to start actively scanning.
+    dev_info(&client->dev, "Sending wake-up/scan-mode command to chip.\n");
+    ret = ssd253x_ts_i2c_write(client, SSD253x_SET_SCAN_MODE, &enable_cmd, 1);
+    if (ret < 0) {
+        dev_err(&client->dev, "Failed to send init command\n");
+        return ret;
+    }
+
+    return 0;
 }
 
 static void ssd253x_ts_reset(struct ssd253x_ts_data *ts)
@@ -135,7 +148,6 @@ static irqreturn_t ssd253x_ts_interrupt(int irq, void *dev_id)
     return IRQ_HANDLED;
 }
 
-
 /* ----- Probe and Remove Functions (Adapted for DT) ----- */
 
 static int ssd253x_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
@@ -146,12 +158,7 @@ static int ssd253x_ts_probe(struct i2c_client *client, const struct i2c_device_i
     int error;
     u32 screen_max_x, screen_max_y;
 
-    dev_info(&client->dev, "probing for SSD253x touchscreen (v3 driver)\n");
-
-    if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-        dev_err(&client->dev, "I2C functionality check failed\n");
-        return -EIO;
-    }
+    dev_info(&client->dev, "probing for SSD253x touchscreen (v5 driver)\n");
 
     ts = devm_kzalloc(&client->dev, sizeof(*ts), GFP_KERNEL);
     if (!ts)
@@ -160,7 +167,7 @@ static int ssd253x_ts_probe(struct i2c_client *client, const struct i2c_device_i
     ts->client = client;
     i2c_set_clientdata(client, ts);
 
-    /* --- GPIO Adaptation --- */
+    /* --- GPIO and Chip Init --- */
     ts->reset_gpio = devm_gpiod_get_optional(&client->dev, "reset", GPIOD_OUT_LOW);
     if (IS_ERR(ts->reset_gpio)) {
         dev_err(&client->dev, "failed to get reset gpio\n");
@@ -168,6 +175,11 @@ static int ssd253x_ts_probe(struct i2c_client *client, const struct i2c_device_i
     }
 
     ssd253x_ts_reset(ts);
+
+    // ** NEW STEP: Initialize the chip to start scanning **
+    error = ssd253x_ts_init_chip(client);
+    if (error)
+        return error;
 
     /* --- Input Device Setup --- */
     input_dev = devm_input_allocate_device(&client->dev);
@@ -190,7 +202,6 @@ static int ssd253x_ts_probe(struct i2c_client *client, const struct i2c_device_i
         dev_warn(&client->dev, "touchscreen-size-x not found, using default 800\n");
         screen_max_x = 800;
     }
-
     error = device_property_read_u32(&client->dev, "touchscreen-size-y", &screen_max_y);
     if (error) {
         dev_warn(&client->dev, "touchscreen-size-y not found, using default 480\n");
@@ -206,43 +217,38 @@ static int ssd253x_ts_probe(struct i2c_client *client, const struct i2c_device_i
         return error;
     }
 
-    /* --- NEW IRQ Setup --- */
+    /* --- IRQ Setup --- */
     irq_gpio = devm_gpiod_get(&client->dev, "interrupt", GPIOD_IN);
     if (IS_ERR(irq_gpio)) {
         dev_err(&client->dev, "failed to get interrupt gpio\n");
         return PTR_ERR(irq_gpio);
     }
-    
     ts->irq = gpiod_to_irq(irq_gpio);
     if (ts->irq < 0) {
         dev_err(&client->dev, "failed to get irq from gpio\n");
         return ts->irq;
     }
-
     error = devm_request_threaded_irq(&client->dev, ts->irq, NULL,
                                       ssd253x_ts_interrupt,
-                                      IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+                                      IRQF_TRIGGER_LOW | IRQF_ONESHOT,
                                       "ssd253x-ts", ts);
     if (error) {
         dev_err(&client->dev, "failed to request irq %d\n", ts->irq);
         return error;
     }
-    
+
     /* Register the input device */
     error = input_register_device(input_dev);
     if (error) {
         dev_err(&client->dev, "failed to register input device\n");
         return error;
     }
-
     dev_info(&client->dev, "SSD253x touchscreen probed successfully\n");
-
     return 0;
 }
 
 static int ssd253x_ts_remove(struct i2c_client *client)
 {
-    // devm_ managed resources will be freed automatically.
     dev_info(&client->dev, "removing ssd253x-ts driver\n");
     return 0;
 }
@@ -276,5 +282,5 @@ static struct i2c_driver ssd253x_ts_driver = {
 module_i2c_driver(ssd253x_ts_driver);
 
 MODULE_AUTHOR("Adapted for standard kernel");
-MODULE_DESCRIPTION("Solomon SSD253x I2C Touchscreen Driver (v3)");
+MODULE_DESCRIPTION("Solomon SSD253x I2C Touchscreen Driver (v5)");
 MODULE_LICENSE("GPL v2");
