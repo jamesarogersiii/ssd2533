@@ -1,10 +1,9 @@
 /*
  * Solomon Systech SSD253X I2C Touchscreen Driver
  *
- * Version 7: Removed the initialization command.
- * The init command was causing an I2C write error. This version returns to
- * the simpler logic of just resetting the chip and then starting to poll,
- * on the theory that the chip starts scanning automatically.
+ * Version 8: Re-enabled error logging in the polling function.
+ * This is the final debugging step to see if the I2C reads are failing
+ * after the driver has successfully probed.
  */
 
 #include <linux/module.h>
@@ -47,8 +46,12 @@ static void ssd253x_ts_work_func(struct work_struct *work)
 
     ret = ssd253x_ts_i2c_read(ts->client, SSD253x_READ_DATA_ADDR, data_buf, sizeof(data_buf));
     if (ret < 0) {
-        // This error is expected if no touch is present on some controllers
-        // dev_err(&ts->client->dev, "Polling: Failed to read touch data\n");
+        /*
+         * Re-enabled for debugging. If this message floods the log, the chip
+         * is likely returning an error when no finger is present, which may be
+         * normal. We only care if it also happens when a finger IS present.
+         */
+        dev_err(&ts->client->dev, "Polling: i2c read failed with error %d\n", ret);
         return;
     }
 
@@ -116,7 +119,7 @@ static int ssd253x_ts_probe(struct i2c_client *client, const struct i2c_device_i
     int error;
     u32 screen_max_x = 0, screen_max_y = 0;
 
-    dev_info(&client->dev, "probing for SSD253x touchscreen (v7 polling driver)\n");
+    dev_info(&client->dev, "probing for SSD253x touchscreen (v8 polling driver with logging)\n");
 
     ts = devm_kzalloc(&client->dev, sizeof(*ts), GFP_KERNEL);
     if (!ts) return -ENOMEM;
@@ -141,7 +144,7 @@ static int ssd253x_ts_probe(struct i2c_client *client, const struct i2c_device_i
     input_dev->dev.parent = &client->dev;
 
     __set_bit(EV_ABS, input_dev->evbit);
-    __set_bit(EV_KEY, input_dev->evbit);
+    __set_bit(EV_KEY, input_dev->keybit);
     __set_bit(BTN_TOUCH, input_dev->keybit);
 
     device_property_read_u32(&client->dev, "touchscreen-size-x", &screen_max_x);
@@ -186,5 +189,5 @@ static struct i2c_driver ssd253x_ts_driver = {
 module_i2c_driver(ssd253x_ts_driver);
 
 MODULE_AUTHOR("Adapted for standard kernel");
-MODULE_DESCRIPTION("Solomon SSD253x I2C Touchscreen Driver (v7 - Polling, No Init)");
+MODULE_DESCRIPTION("Solomon SSD253x I2C Touchscreen Driver (v8 - Logging)");
 MODULE_LICENSE("GPL v2");
