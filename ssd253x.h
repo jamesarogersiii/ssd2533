@@ -2,6 +2,8 @@
 #define _SSD253X_H
 
 #include <linux/gpio/consumer.h>
+#include <linux/hrtimer.h>
+#include <linux/workqueue.h>
 
 /* Register Defines */
 #define SSD253x_READ_ID_ADDR        0x00
@@ -14,19 +16,22 @@
 
 /* Constants */
 #define MAX_POINT   5
+#define MS_TO_NS(x) ((x) * 1000000)
 
 /**
  * struct ssd253x_ts_data - private data for the ssd253x driver
  * @client:      The I2C client device.
  * @input_dev:   The input device structure.
  * @reset_gpio:  GPIO descriptor for the reset pin.
- * @irq:         The interrupt request number for the touchscreen.
+ * @timer:       Kernel timer for polling for touch events.
+ * @work:        Work structure to read data off the timer's context.
  */
 struct ssd253x_ts_data {
     struct i2c_client      *client;
     struct input_dev       *input_dev;
     struct gpio_desc       *reset_gpio;
-    int                    irq;
+    struct hrtimer         timer;
+    struct work_struct     work;
 };
 
 #endif /* _SSD253X_H */
