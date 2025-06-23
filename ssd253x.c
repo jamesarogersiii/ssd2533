@@ -1,9 +1,9 @@
 /*
  * Solomon Systech SSD253X I2C Touchscreen Driver
  *
- * Version 10: Integrated the hardcoded initialization sequence from the
- * other driver found in the Github repository (ssd2533.c). This is the
- * most likely fix for the -ENXIO error.
+ * Version 11: Skips the first command in the initialization table.
+ * The first command {0x0c, 0x01} was causing an I2C write error, so this
+ * version bypasses it while still executing the rest of the sequence.
  */
 
 #include <linux/module.h>
@@ -123,7 +123,8 @@ static int ssd253x_ts_init_chip(struct i2c_client *client)
 {
     int i;
     dev_info(&client->dev, "Starting chip initialization sequence...\n");
-    for (i = 0; i < ARRAY_SIZE(ssd2533_init_data); i++) {
+    // ** IMPORTANT: Start loop at 1 to skip the problematic {0x0c, 0x01} command **
+    for (i = 1; i < ARRAY_SIZE(ssd2533_init_data); i++) {
         ssd253x_ts_i2c_write_reg(client, ssd2533_init_data[i][0], ssd2533_init_data[i][1]);
         msleep(2); // Small delay between writes
     }
@@ -172,7 +173,7 @@ static int ssd253x_ts_probe(struct i2c_client *client, const struct i2c_device_i
     int error;
     u32 screen_max_x = 0, screen_max_y = 0;
 
-    dev_info(&client->dev, "probing for SSD253x touchscreen (v10 polling driver with init table)\n");
+    dev_info(&client->dev, "probing for SSD253x touchscreen (v11 polling driver with corrected init)\n");
 
     ts = devm_kzalloc(&client->dev, sizeof(*ts), GFP_KERNEL);
     if (!ts) return -ENOMEM;
@@ -250,6 +251,5 @@ static struct i2c_driver ssd253x_ts_driver = {
 module_i2c_driver(ssd253x_ts_driver);
 
 MODULE_AUTHOR("Adapted for standard kernel");
-MODULE_DESCRIPTION("Solomon SSD253x I2C Touchscreen Driver (v10 - With Init Table)");
+MODULE_DESCRIPTION("Solomon SSD253x I2C Touchscreen Driver (v11 - Skip First Init Cmd)");
 MODULE_LICENSE("GPL v2");
-
